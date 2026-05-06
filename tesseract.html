@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ubuntu Systems: Tesseract Projector</title>
+    <style>
+        body { 
+            background: #000; 
+            color: #fff; 
+            font-family: 'Courier New', sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+            justify-content: center; 
+        }
+        canvas { 
+            border: 1px solid #333; 
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.1); 
+        }
+        .hud { 
+            margin-bottom: 20px; 
+            text-align: center; 
+            max-width: 600px;
+        }
+        .stat {
+            color: #00ffcc;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud">
+        <h2>The Tesseract Projector</h2>
+        <p>Visualizing Structural Fluidity</p>
+        <p style="font-size: 0.8em; color: #aaa;">
+            Watch the <span style="color: #ff4444;">INNER CUBE</span> become the <span style="color: #00ffcc;">OUTER CUBE</span>.
+            <br>Status: <span id="status" class="stat">TRANSITIONING</span>
+        </p>
+    </div>
+
+    <canvas id="tesseractCanvas" width="600" height="600"></canvas>
+
+<script>
+    const canvas = document.getElementById('tesseractCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Visual thresholds for coloring edges (squared distances to avoid Math.sqrt)
+    const INNER_THRESHOLD_SQ = 2500;   // 50^2
+    const OUTER_THRESHOLD_SQ = 10000;  // 100^2
+    const INNER_COLOR     = "rgba(255, 50, 50, 0.5)";
+    const OUTER_COLOR     = "rgba(0, 255, 200, 0.5)";
+    const CONNECTOR_COLOR = "rgba(150, 0, 255, 0.3)";
+    const INVERSION_THRESHOLD = 0.2;
+
+    let angle = 0;
+
+    // --- 4D MATH KERNEL ---
+    
+    // A point in 4D is (x, y, z, w)
+    class P4 {
+        constructor(x, y, z, w) {
+            this.x = x; this.y = y; this.z = z; this.w = w;
+        }
+    }
+
+    // Matrix Multiplication for 4D Rotation
+    function matMul(v, m) {
+        let x = v.x*m[0][0] + v.y*m[1][0] + v.z*m[2][0] + v.w*m[3][0];
+        let y = v.x*m[0][1] + v.y*m[1][1] + v.z*m[2][1] + v.w*m[3][1];
+        let z = v.x*m[0][2] + v.y*m[1][2] + v.z*m[2][2] + v.w*m[3][2];
+        let w = v.x*m[0][3] + v.y*m[1][3] + v.z*m[2][3] + v.w*m[3][3];
+        return new P4(x, y, z, w);
+    }
+
+    function initPoints() {
+        let points = [];
+        // Generate 16 vertices of a Hypercube (-1 to 1)
+        for (let i = 0; i < 16; i++) {
+            let x = (i & 1) ? 1 : -1;
+            let y = (i & 2) ? 1 : -1;
+            let z = (i & 4) ? 1 : -1;
+            let w = (i & 8) ? 1 : -1;
+            points.push(new P4(x, y, z, w));
+        }
+        return points;
+    }
+
+    const points = initPoints();
+
+    function draw() {
+        // Clear Background
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'; // Trails for "Flow" feel
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        angle += 0.015; // Speed of Time flow
+
+        // ROTATION MATRICES
+        // We rotate in XW and ZW planes to show the "Inside-Out" motion
+        
+        let rotationXW = [
+            [Math.cos(angle), 0, 0, -Math.sin(angle)],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [Math.sin(angle), 0, 0, Math.cos(angle)]
+        ];
+
+        let rotationZW = [
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, Math.cos(angle), -Math.sin(angle)],
+            [0, 0, Math.sin(angle), Math.cos(angle)]
+        ];
+
+        let projected3D = [];
+
+        // 1. TRANSFORM & PROJECT
+        for (let i = 0; i < points.length; i++) {
+            let p = points[i];
+
+            // Apply Rotations
+            let rotated = matMul(p, rotationXW);
+            rotated = matMul(rotated, rotationZW);
+
+            // STEREOGRAPHIC PROJECTION (4D -> 3D)
+            // This formula creates the "Perspective" effect where things get smaller
+            // as they move away in the 4th dimension (w).
+            let distance = 3; // Camera distance from 4D object
+            let w = 1 / (distance - rotated.w);
+            
+            let projection = [
+                [w, 0, 0, 0],
+                [0, w, 0, 0],
+                [0, 0, w, 0],
+                [0, 0, 0, 0]
+            ];
+            
+            let p3 = matMul(rotated, projection);
+            
+            // Scale to Canvas
+            p3.x *= 400; 
+            p3.y *= 400;
+            projected3D[i] = p3;
+        }
+
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+
+        // 2. DRAW CONNECTIONS (The Structure)
+        for (let i = 0; i < 16; i++) {
+            // Draw Nodes
+            // Scale point size based on projected 4D depth (w-coordinate)
+            let size = Math.max(2, 6 * (1 / (3 - projected3D[i].w || 0.01)));
+            
+            ctx.fillStyle = "#fff";
+            ctx.beginPath();
+            ctx.arc(projected3D[i].x, projected3D[i].y, size, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Connect to neighbors
+            for (let j = i + 1; j < 16; j++) {
+                // Check Hamming distance (Are they connected on the hypercube?)
+                // Only connect if indices differ by exactly 1 bit
+                let val = i ^ j;
+                if ((val & (val - 1)) === 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(projected3D[i].x, projected3D[i].y);
+                    ctx.lineTo(projected3D[j].x, projected3D[j].y);
+                    
+                    // COLOR THE LINKS
+                    // The beauty of the Tesseract:
+                    // Cyan = Outer Shell
+                    // Red = Inner Shell
+                    // Purple = The Spokes connecting them
+                    
+                    // Distance in 3D space helps determine if it's an "inner" or "outer" link visually
+                    let distSq = projected3D[i].x**2 + projected3D[i].y**2;
+                    
+                    if(distSq < INNER_THRESHOLD_SQ) ctx.strokeStyle = INNER_COLOR;
+                    else if(distSq > OUTER_THRESHOLD_SQ) ctx.strokeStyle = OUTER_COLOR;
+                    else ctx.strokeStyle = CONNECTOR_COLOR;
+
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+        ctx.restore();
+
+        // Update HUD
+        let cycle = Math.sin(angle);
+        if(Math.abs(cycle) < INVERSION_THRESHOLD) document.getElementById('status').innerText = "INVERSION POINT (Equality)";
+        else document.getElementById('status').innerText = "TRANSITIONING";
+        
+        requestAnimationFrame(draw);
+    }
+
+    draw();
+</script>
+</body>
+</html>
